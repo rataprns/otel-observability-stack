@@ -1,0 +1,50 @@
+# ~/observability-stack/loki/loki-config.yaml
+auth_enabled: false # Deshabilita la autenticación para simplicidad (NO para producción)
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+
+common:
+  # Directorio donde Loki almacenará los datos de chunks y el índice.
+  # Asegúrate de que el volumen 'loki_data' en docker-compose.yml apunte a un lugar persistente.
+  path_prefix: /loki/data
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory # Para pruebas; usa 'consul' o 'etcd' para HA en producción
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      period: 24h
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+  rule_path: /loki/rules-temp
+  alertmanager_url: http://localhost:9093 # Si usas Alertmanager
+  ring:
+    kvstore:
+      store: inmemory
+
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
+
+storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/data/boltdb-shipper-active
+    cache_location: /loki/data/boltdb-shipper-cache
+    resync_interval: 5s
+  filesystem:
+    directory: /loki/data/chunks # Directorio para almacenar los chunks de logs

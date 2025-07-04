@@ -1,0 +1,48 @@
+# ~/observability-stack/promtail/promtail-config.yaml
+server:
+  http_listen_port: 9080 # Puerto para métricas internas de Promtail (Prometheus puede rasparlo)
+  grpc_listen_port: 0
+
+positions:
+  # Promtail usa este archivo para recordar dónde dejó de leer en cada archivo de log,
+  # para evitar enviar logs duplicados después de un reinicio.
+  filename: /tmp/positions.yaml
+
+clients:
+  # URL de tu instancia de Loki.
+  # 'loki' es el nombre del servicio en docker-compose, que se resuelve a la IP interna del contenedor Loki.
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Job para recolectar logs del sistema de la EC2 (ej. /var/log/syslog, /var/log/auth.log)
+  - job_name: system_logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs # Etiqueta para identificar estos logs en Loki
+          __path__: /var/log/*log # Patrón para los archivos de log del sistema
+          instance: your-ec2-instance-id # Puedes usar el ID de la EC2 o un nombre descriptivo
+
+  # Job para recolectar logs de contenedores Docker en la misma EC2
+  - job_name: docker_logs
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Renombra las etiquetas de Docker a algo más amigable para Loki
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container_name'
+      - source_labels: ['__meta_docker_image_name']
+        target_label: 'image_name'
+      - source_labels: ['__meta_docker_container_id']
+        target_label: 'container_id'
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        regex: '(.*)'
+        target_label: 'service_name'
+      # Puedes añadir más reglas para filtrar o añadir etiquetas personalizadas
+      # Por ejemplo, para incluir solo logs de ciertos contenedores:
+      # - source_labels: ['__meta_docker_container_name']
+      #   regex: '/(otel-collector|jaeger|prometheus|grafana|loki|promtail|cadvisor)'
+      #   action: keep # Solo recolecta logs de estos contenedores de observabilidad

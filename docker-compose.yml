@@ -79,6 +79,7 @@ services:
       - "3000:3000" # Grafana UI (Accede a esto desde tu navegador: http://<Public_IPv4_Address_of_EC2>:3000)
     volumes:
       - grafana_data:/var/lib/grafana # Volumen para la persistencia de datos de Grafana
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources # Configuración de fuentes de datos
     environment:
       - GF_SECURITY_ADMIN_USER=admin # Usuario de administrador inicial
       - GF_SECURITY_ADMIN_PASSWORD=admin # CONTRASEÑA INICIAL: ¡CAMBIA ESTO EN PRODUCCIÓN!
@@ -87,6 +88,38 @@ services:
     depends_on:
       # Grafana depende de Prometheus para poder consultarlo como fuente de datos.
       - prometheus
+      - loki
+    
+  # Loki
+  # Almacena logs y permite su consulta desde Grafana.
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100" # Puerto para que Promtail y Grafana se conecten a Loki
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml # Monta el archivo de config de Loki
+      - loki_data:/loki/data # Volumen para la persistencia de datos de Loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - observability-net
+
+  # Promtail
+  # Recoge logs del sistema y de los contenedores Docker, y los envía a Loki.
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yaml # Monta el archivo de config de Promtail
+      - /var/log:/var/log:ro # Monta los logs del sistema host (EC2)
+      # Montajes para que Promtail pueda leer logs de contenedores Docker:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro # Acceso a los directorios de logs de Docker
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Acceso al socket de Docker para discovery
+    command: -config.file=/etc/promtail/config.yaml
+    networks:
+      - observability-net
+    depends_on:
+      - loki # Promtail necesita que Loki esté listo para enviar logs
 
   # cAdvisor (opcional)
   # Monitorea el uso de recursos de los contenedores Docker en la instancia EC2.
@@ -114,3 +147,4 @@ services:
 volumes:
   prometheus_data: {}
   grafana_data: {}
+  loki_data: {}
