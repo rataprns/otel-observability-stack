@@ -6,7 +6,6 @@ server:
   grpc_listen_port: 9095
 
 common:
-  # Base path for storing Loki data. This should match your volume mount.
   path_prefix: /loki/data
   replication_factor: 1
   ring:
@@ -14,7 +13,6 @@ common:
     kvstore:
       store: inmemory # For testing/dev; use 'consul' or 'etcd' for HA in production
 
-# Storage configuration using boltdb-shipper for index and filesystem for chunks
 storage_config:
   boltdb_shipper:
     active_index_directory: /loki/data/boltdb-shipper-active
@@ -29,28 +27,22 @@ schema_config:
       store: boltdb-shipper
       object_store: filesystem
       schema: v11
-      # No 'period' directly under here. It's usually handled by the store/index.
 
-# Ruler configuration for alerting rules (optional, if you're not using Loki for alerting)
 ruler:
   storage:
     type: local
     local:
       directory: /loki/rules
   rule_path: /loki/rules-temp
-  alertmanager_url: http://localhost:9093 # Default Alertmanager URL if you use it
+  alertmanager_url: http://localhost:9093
   ring:
     kvstore:
       store: inmemory
 
-# Compactor configuration (for managing old data)
 compactor:
   working_directory: /loki/compactor
-  # 'shared_store' is no longer a direct field.
-  # The compactor uses the 'object_store' defined in schema_config.
-  compaction_interval: 10m # How often the compactor runs
+  compaction_interval: 10m
 
-# Ingester configuration (optional, typically default is fine)
 ingester:
   lifecycler:
     ring:
@@ -59,6 +51,7 @@ ingester:
       replication_factor: 1
     final_sleep: 0s
   chunk_idle_period: 5m
-  chunk_retain_period: 1w
-  max_transfer_retries: 0
+  # CAMBIO 1: Cambiado '1w' a '7d' para el periodo de retención
+  chunk_retain_period: 7d
   max_chunk_age: 1h
+  # CAMBIO 2: Eliminado 'max_transfer_retries' ya que no existe en esta versión
