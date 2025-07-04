@@ -79,7 +79,6 @@ services:
       - "3000:3000" # Grafana UI (Accede a esto desde tu navegador: http://<Public_IPv4_Address_of_EC2>:3000)
     volumes:
       - grafana_data:/var/lib/grafana # Volumen para la persistencia de datos de Grafana
-      - ./grafana/datasources:/etc/grafana/provisioning/datasources # Configuración de fuentes de datos
     environment:
       - GF_SECURITY_ADMIN_USER=admin # Usuario de administrador inicial
       - GF_SECURITY_ADMIN_PASSWORD=admin # CONTRASEÑA INICIAL: ¡CAMBIA ESTO EN PRODUCCIÓN!
@@ -89,7 +88,7 @@ services:
       # Grafana depende de Prometheus para poder consultarlo como fuente de datos.
       - prometheus
       - loki
-    
+
   # Loki
   # Almacena logs y permite su consulta desde Grafana.
   loki:
@@ -99,8 +98,9 @@ services:
       - "3100:3100" # Puerto para que Promtail y Grafana se conecten a Loki
     volumes:
       - ./loki/loki-config.yaml:/etc/loki/local-config.yaml # Monta el archivo de config de Loki
-      - loki_data:/loki/data # Volumen para la persistencia de datos de Loki
+      - ./data/loki:/loki/data # Volumen para la persistencia de datos de Loki
     command: -config.file=/etc/loki/local-config.yaml
+    user: "root"
     networks:
       - observability-net
 
@@ -147,4 +147,3 @@ services:
 volumes:
   prometheus_data: {}
   grafana_data: {}
-  loki_data: {}
