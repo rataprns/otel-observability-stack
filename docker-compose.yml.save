@@ -1,0 +1,116 @@
+# ~/observability-stack/docker-compose.yml
+version: '3.8' # La advertencia sobre 'version' obsoleta es normal con docker compose v2, puedes ignorarla.
+
+networks:
+  observability-net:
+    driver: bridge
+
+services:
+  # OpenTelemetry Collector
+  # Actúa como el punto de entrada para la telemetría OTLP (trazas y métricas)
+  # desde tu aplicación Next.js en Vercel, y luego las enruta a Jaeger y Prometheus.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      # Puertos OTLP para que tu aplicación Next.js (Vercel) envíe telemetría
+      # Estos son los puertos que deben estar abiertos en tu Security Group de EC2 desde 'Anywhere'.
+      - "4317:4317" # OTLP gRPC (para trazas y métricas desde Next.js)
+      - "4318:4318" # OTLP HTTP (si tu Next.js app lo usara en lugar de gRPC)
+      # Puertos para que Prometheus raspe métricas del propio Collector
+      - "8889:8889" # Prometheus exporter endpoint del Collector (para que Prometheus lo raspe)
+      - "8888:8888" # Metrics endpoint para métricas internas del Collector (para que Prometheus lo raspe)
+    networks:
+      - observability-net
+    depends_on:
+      # El Collector depende de Jaeger para reenviar las trazas,
+      # por lo que Jaeger debe estar listo primero.
+      - jaeger
+
+  # Jaeger All-in-One
+  # Recibe trazas del OpenTelemetry Collector y proporciona la UI para visualizarlas.
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      - "16686:16686" # Jaeger UI (Accede a esto desde tu navegador: http://<Public_IPv4_Address_of_EC2>:16686)
+      # IMPORTANTE: Los puertos OTLP 4317/4318 NO se exponen directamente desde Jaeger al host.
+      # El Collector es quien expone esos puertos y luego envía internamente a Jaeger.
+      # Puedes descomentar estas líneas si, por alguna razón, quisieras que Jaeger también
+      # recibiera OTLP directamente desde fuera de Docker Compose (no recomendado con un Collector).
+      #- "4317:4317" # OTLP gRPC
+      #- "4318:4318" # OTLP HTTP
+    environment:
+      # Habilita el receptor OTLP interno de Jaeger para que el Collector pueda enviar trazas.
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - observability-net
+
+  # Prometheus
+  # Recoge métricas del OpenTelemetry Collector y cAdvisor.
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml # Archivo de configuración de Prometheus
+      - prometheus_data:/prometheus # Volumen para la persistencia de datos de Prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090" # Prometheus UI (Accede a esto desde tu navegador: http://<Public_IPv4_Address_of_EC2>:9090)
+    networks:
+      - observability-net
+    depends_on:
+      # Prometheus depende del Collector porque lo raspa para obtener métricas.
+      - otel-collector
+
+  # Grafana
+  # Visualiza los datos de Prometheus.
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000" # Grafana UI (Accede a esto desde tu navegador: http://<Public_IPv4_Address_of_EC2>:3000)
+    volumes:
+      - grafana_data:/var/lib/grafana # Volumen para la persistencia de datos de Grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin # Usuario de administrador inicial
+      - GF_SECURITY_ADMIN_PASSWORD=admin # CONTRASEÑA INICIAL: ¡CAMBIA ESTO EN PRODUCCIÓN!
+    networks:
+      - observability-net
+    depends_on:
+      # Grafana depende de Prometheus para poder consultarlo como fuente de datos.
+      - prometheus
+
+  # cAdvisor (opcional)
+  # Monitorea el uso de recursos de los contenedores Docker en la instancia EC2.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8080:8080" # UI de cAdvisor (Accede a esto desde tu navegador: http://<Public_IPv4_Address_of_EC2>:8080)
+    volumes:
+      # Montajes necesarios para que cAdvisor pueda acceder a la información del sistema
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - observability-net
+    privileged: true # Requiere privilegios para acceder a la información del sistema
+    depends_on:
+      # No hay una dependencia directa crítica, pero Prometheus lo raspaba,
+      # así que es buena práctica que Prometheus se inicie antes si se va a raspar.
+      - prometheus
+
+# Volúmenes para persistir datos, para que no se pierdan al detener/reiniciar los contenedores.
+volumes:
+  prometheus_data: {}
+  grafana_data: {}

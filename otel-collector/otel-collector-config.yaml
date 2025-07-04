@@ -1,0 +1,36 @@
+# ~/observability-stack/otel-collector/otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors: # <<<<<<<<<<<<<<<< AÑADE ESTA SECCIÓN
+  batch:     # <<<<<<<<<<<<<<<< Y LA DEFINICIÓN DEL PROCESADOR BATCH
+    send_batch_size: 1000
+    timeout: 10s
+
+exporters:
+  otlp:
+    endpoint: jaeger:4317 # Envía trazas y métricas a Jaeger dentro de la red Docker Compose
+    tls:
+      insecure: true # Usar solo para desarrollo/pruebas. En producción, configurar TLS.
+
+  prometheus:
+    endpoint: "0.0.0.0:8889" # Endpoint para que Prometheus raspe métricas
+
+  debug: # Reemplaza a 'logging'
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch] # Usa el procesador batch que acabamos de definir
+      exporters: [otlp, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch] # Usa el procesador batch que acabamos de definir
+      exporters: [prometheus, debug]
