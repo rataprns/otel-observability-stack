@@ -51,7 +51,5 @@ ingester:
       replication_factor: 1
     final_sleep: 0s
   chunk_idle_period: 5m
-  # CAMBIO 1: Cambiado '1w' a '7d' para el periodo de retención
-  chunk_retain_period: 7d
+  chunk_retain_period: 168h
   max_chunk_age: 1h
-  # CAMBIO 2: Eliminado 'max_transfer_retries' ya que no existe en esta versión
