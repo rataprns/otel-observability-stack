@@ -1,50 +1,64 @@
 # ~/observability-stack/loki/loki-config.yaml
-auth_enabled: false # Deshabilita la autenticación para simplicidad (NO para producción)
+auth_enabled: false
 
 server:
   http_listen_port: 3100
   grpc_listen_port: 9095
 
 common:
-  # Directorio donde Loki almacenará los datos de chunks y el índice.
-  # Asegúrate de que el volumen 'loki_data' en docker-compose.yml apunte a un lugar persistente.
+  # Base path for storing Loki data. This should match your volume mount.
   path_prefix: /loki/data
   replication_factor: 1
   ring:
     instance_addr: 127.0.0.1
     kvstore:
-      store: inmemory # Para pruebas; usa 'consul' o 'etcd' para HA en producción
+      store: inmemory # For testing/dev; use 'consul' or 'etcd' for HA in production
 
-schema_config:
-  configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v11
-      period: 24h
-      index:
-        prefix: index_
-        period: 24h
-
-ruler:
-  storage:
-    type: local
-    local:
-      directory: /loki/rules
-  rule_path: /loki/rules-temp
-  alertmanager_url: http://localhost:9093 # Si usas Alertmanager
-  ring:
-    kvstore:
-      store: inmemory
-
-compactor:
-  working_directory: /loki/compactor
-  shared_store: filesystem
-
+# Storage configuration using boltdb-shipper for index and filesystem for chunks
 storage_config:
   boltdb_shipper:
     active_index_directory: /loki/data/boltdb-shipper-active
     cache_location: /loki/data/boltdb-shipper-cache
     resync_interval: 5s
   filesystem:
-    directory: /loki/data/chunks # Directorio para almacenar los chunks de logs
+    directory: /loki/data/chunks # Directory for log chunks
+
+schema_config:
+  configs:
+    - from: 2020-10-24 # Date from which this schema applies
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      # No 'period' directly under here. It's usually handled by the store/index.
+
+# Ruler configuration for alerting rules (optional, if you're not using Loki for alerting)
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+  rule_path: /loki/rules-temp
+  alertmanager_url: http://localhost:9093 # Default Alertmanager URL if you use it
+  ring:
+    kvstore:
+      store: inmemory
+
+# Compactor configuration (for managing old data)
+compactor:
+  working_directory: /loki/compactor
+  # 'shared_store' is no longer a direct field.
+  # The compactor uses the 'object_store' defined in schema_config.
+  compaction_interval: 10m # How often the compactor runs
+
+# Ingester configuration (optional, typically default is fine)
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    final_sleep: 0s
+  chunk_idle_period: 5m
+  chunk_retain_period: 1w
+  max_transfer_retries: 0
+  max_chunk_age: 1h
