@@ -26,7 +26,7 @@ The **Otel Observability Stack** is a comprehensive solution for monitoring and 
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-repo/otel-observability-stack.git
+git clone https://github.com/rataprns/otel-observability-stack.git
 cd otel-observability-stack
 ```
 
